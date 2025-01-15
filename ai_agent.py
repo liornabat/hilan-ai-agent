@@ -15,7 +15,7 @@ from openai import AsyncOpenAI
 load_dotenv()
 
 llm = os.getenv('LLM_MODEL', 'gpt-4o-mini')
-model = OpenAIModel(llm)
+model = OpenAIModel(llm )
 
 logfire.configure(send_to_logfire='if-token-present')
 db_table = os.getenv("DB_TABLE", "hilan_docs")
@@ -59,7 +59,8 @@ ai_agent = Agent(
     model,
     system_prompt=system_prompt,
     deps_type=AIDeps,
-    retries=2
+    retries=2,
+    model_settings={"temperature": 0.3}
 )
 
 async def get_embedding(text: str, openai_client: AsyncOpenAI) -> List[float]:
