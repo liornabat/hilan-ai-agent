@@ -34,14 +34,16 @@ supabase: Client = Client(
     os.getenv("SUPABASE_SERVICE_KEY")
 )
 
-# (Optional) If you no longer need this, you can remove it entirely.
-# We won't call it anymore in this example.
-def maintain_message_history(messages: list) -> list:
+def get_last_ai_responses(messages: list, count: int = 3) -> list:
     """
-    (No longer used) Old function that pruned message history.
-    Keeping it here for reference, but not calling it.
+    Get the last 'count' AI responses from the message history.
     """
-    return messages  # Stub/no-op
+    ai_responses = [
+        msg for msg in messages
+        if isinstance(msg, ModelResponse) and
+        any(isinstance(part, TextPart) for part in msg.parts)
+    ]
+    return ai_responses[-count:] if ai_responses else []
 
 st.markdown(
     """
@@ -86,14 +88,11 @@ def display_message_part(part):
     elif part.part_kind == 'text':
         with st.chat_message("assistant"):
             st.markdown(part.content)
-    # You can decide if you want to show 'tool' or 'tool-return' parts, etc.
-    # For brevity, skipping them here.
 
 async def run_agent_with_streaming(user_input: str, model_context: list):
     """
     Run the agent with streaming text support for RTL.
-    'model_context' is a list of messages actually sent to the LLM.
-    In this new version, it contains only the single user message.
+    'model_context' now includes the last 3 AI responses plus the current user input.
     """
     deps = AIDeps(
         supabase=supabase,
@@ -110,7 +109,6 @@ async def run_agent_with_streaming(user_input: str, model_context: list):
 
         async for chunk in result.stream_text(delta=True):
             partial_text += chunk
-            # Display partial text (assistant's streaming) in RTL
             message_placeholder.markdown(
                 f"<div dir='rtl'>{partial_text}</div>",
                 unsafe_allow_html=True
@@ -133,7 +131,7 @@ async def main():
     st.markdown("<p style='text-align: right; direction: rtl;'>שאל כל שאלה בנוגע לטופס 101</p>", unsafe_allow_html=True)
 
     if "messages" not in st.session_state:
-        st.session_state.messages = []  # This will store the FULL conversation
+        st.session_state.messages = []
 
     # Display ALL past messages in the UI
     for msg in st.session_state.messages:
@@ -146,15 +144,16 @@ async def main():
 
     if user_input:
         # 1) Add a new user message to the full conversation (for UI display)
-        new_message = ModelRequest(parts=[UserPromptPart(content=user_input)])
-        st.session_state.messages.append(new_message)
+        new_user_message = ModelRequest(parts=[UserPromptPart(content=user_input)])
+        st.session_state.messages.append(new_user_message)
 
         # 2) Show that user message in the UI
         with st.chat_message("user"):
             st.markdown(f"<div dir='rtl'>{user_input}</div>", unsafe_allow_html=True)
 
-        # 3) Build a context containing ONLY this new user message
-        model_context = [ModelRequest(parts=[UserPromptPart(content=user_input)])]
+        # 3) Build context with last 3 AI responses plus the new user message
+        last_responses = get_last_ai_responses(st.session_state.messages)
+        model_context = last_responses + [new_user_message]
 
         # 4) Stream the assistant's answer
         with st.chat_message("assistant"):

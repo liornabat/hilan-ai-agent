@@ -19,7 +19,7 @@ model = OpenAIModel(llm )
 
 logfire.configure(send_to_logfire='if-token-present')
 db_table = os.getenv("DB_TABLE", "hilan_docs")
-docs_locations = os.getenv("DOCS_DIRECTORY", "./parsed")
+# docs_locations = os.getenv("DOCS_DIRECTORY", "./parsed")
 embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-large")
 
 @dataclass
@@ -98,7 +98,7 @@ async def retrieve_relevant_documentation(ctx: RunContext[AIDeps], user_query: s
                 'table_name': db_table,
                 'query_embedding': query_embedding,
                 'match_count': 5,
-                'filter': {'source':docs_locations}
+                'filter': {}
             }
         ).execute()
         
@@ -108,19 +108,10 @@ async def retrieve_relevant_documentation(ctx: RunContext[AIDeps], user_query: s
         # Format the results
         formatted_chunks = []
         for doc in result.data:
-            chunk_text = f"""
-                # {doc['name']} - Chunk {doc['chunk_number']}
-                
-                ##  Summary:
-                {doc['summary']}
-                
-                ## Content:
-                    {doc['content']}
-            """
-            formatted_chunks.append(chunk_text)
-            
-        # Join all chunks with a separator
-        return "\n\n---\n\n".join(formatted_chunks)
+            context_doc=f"# Summary\n\n{doc['summary']}\n\n# Content\n\n{doc['content']}"
+            formatted_chunks.append(context_doc)
+        joined_chunks = "\n\n---\n\n".join(formatted_chunks)
+        return joined_chunks
         
     except Exception as e:
         print(f"Error retrieving documentation: {e}")
@@ -138,8 +129,7 @@ async def list_documentation_pages(ctx: RunContext[AIDeps]) -> List[str]:
         # Query Supabase for unique URLs where source is pydantic_ai_docs
 
         result = ctx.deps.supabase.from_(db_table) \
-            .select('name') \
-            .eq('metadata->>source', docs_locations) \
+            .select('file_name') \
             .execute()
         
         if not result.data:
@@ -159,41 +149,19 @@ async def get_page_content(ctx: RunContext[AIDeps], name: str) -> str:
     try:
         # Query Supabase for all chunks of this URL, ordered by chunk_number
         result = ctx.deps.supabase.from_(db_table) \
-            .select('content, summary, chunk_number') \
-            .eq('name', name) \
-            .eq('metadata->>source', docs_locations) \
+            .select('summary') \
+            .eq('file_name', name) \
             .order('chunk_number') \
             .execute()
 
         if not result.data:
             return f"לא נמצא תוכן עבור: {name}"
-
-        # Get the main title from the first chunk
-        page_title = result.data[0][name].split(' - ')[0]
-
-        # Start with document overview
-        formatted_content = [
-            f"# {page_title}",
-            "\n## תקציר המסמך",
-            "נקודות מפתח מכל חלק:"
-        ]
-
-        # Add summaries first as context
         summaries = []
-        for chunk in result.data:
-            if chunk['summary']:
-                summaries.append(f"- חלק {chunk['chunk_number']}: {chunk['summary']}")
-
-        if summaries:
-            formatted_content.extend(summaries)
-            formatted_content.append("\n## התוכן המלא")
-
-        # Add the full content of each chunk
-        for chunk in result.data:
-            formatted_content.append(chunk['content'])
-
-        # Join everything together with proper spacing
-        return "\n\n".join(formatted_content)
+        for doc in result.data:
+            context_doc = f"# Summary\n\n{doc['summary']}\n\n# Content\n\n{doc['content']}"
+            summaries.append(context_doc)
+        joined_content = "\n\n".join(summaries)
+        return joined_content
 
     except Exception as e:
         print(f"Error retrieving page content: {e}")
