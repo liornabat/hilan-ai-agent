@@ -20,8 +20,8 @@ supabase: Client = create_client(
     os.getenv("SUPABASE_SERVICE_KEY")
 )
 
-db_table = os.getenv("DB_TABLE", "hilan_docs")
-docs_locations = os.getenv("DOCS_DIRECTORY", "./documents")
+db_table = os.getenv("DB_TABLE", "documents")
+docs_locations = os.getenv("DOCS_DIRECTORY", "./documents_kol_zchut_json")
 
 
 async def insert_document(doc: Document):
